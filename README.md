@@ -1,6 +1,6 @@
 # Firefly III Sankey Web UI
 
-A lightweight Express web interface wrapper for barreeeiroo's [firefly-iii-sankey](https://github.com/barreeeiroo/Firefly-III-Sankey/tree/main) designed to run in Docker / Unraid completely vibe coded in Gemini.
+A lightweight Express web interface wrapper for [barreeeiroo's firefly-iii-sankey](https://github.com/barreeeiroo/Firefly-III-Sankey/tree/main) designed to run in Docker / Unraid completely vibe coded in Gemini.
 
 ## Features
 - Serves a simple web interface to generate SankeyMatic text from Firefly III data.
