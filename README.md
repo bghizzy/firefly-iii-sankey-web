@@ -19,7 +19,7 @@ A lightweight Express web interface wrapper for [barreeeiroo's firefly-iii-sanke
 ```yaml
 services:
   firefly-sankey-web:
-    build: https://github.com/your-username/firefly-sankey-web.git#main
+    build: https://github.com/bghizzy/firefly-iii-sankey-web.git#main
     container_name: firefly-sankey-web
     ports:
       - "8088:3000"
