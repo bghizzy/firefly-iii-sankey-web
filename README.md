@@ -1,5 +1,5 @@
 # firefly-iii-sankey-web
-
+This was completely vibe coded with Gemini.
 
 ## Docker Compose
 ```
