@@ -18,25 +18,14 @@ A lightweight Express web interface wrapper for [barreeeiroo's firefly-iii-sanke
 ## Quick Start (Docker Compose)
 ```yaml
 services:
-  firefly-sankey-web:
+  firefly-sankey:
     build: https://github.com/bghizzy/firefly-iii-sankey-web.git#main
     container_name: firefly-sankey-web
     ports:
       - "8088:3000"
     environment:
-      - FIREFLY_URL=https://firefly.yourdomain.com
-      - FIREFLY_TOKEN=your_personal_access_token_here
-      - PORT=3000
-    restart: unless-stopped
-
-services:
-  firefly-sankey:
-    build: .
-    container_name: firefly-sankey-web
-    ports:
-      - "3000:3000"
-    environment:
       - FIREFLY_URL=http://<YOUR_UNRAID_IP>:<FIREFLY_PORT>
       - FIREFLY_TOKEN=your_personal_access_token_here
+      - PORT=3000
     restart: unless-stopped
 ```
