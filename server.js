@@ -1,57 +1,69 @@
-import express from 'express';
-import { exec } from 'child_process';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const express = require('express');
+const { exec } = require('child_process');
+const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/config', (req, res) => {
-  res.json({
-    hasEnvConfig: Boolean(process.env.FIREFLY_URL && process.env.FIREFLY_TOKEN),
-    fireflyUrl: process.env.FIREFLY_URL || ''
-  });
-});
+const FIREFLY_URL = (process.env.FIREFLY_URL || '').replace(/\/$/, '');
+const FIREFLY_TOKEN = process.env.FIREFLY_TOKEN || '';
 
-app.post('/api/generate', (req, res) => {
-  const url = process.env.FIREFLY_URL || req.body.url;
-  const token = process.env.FIREFLY_TOKEN || req.body.token;
-  const { startDate, endDate, withAssets, format } = req.body;
-
-  if (!url || !token) {
+// 1. Connection check endpoint
+app.get('/api/health', async (req, res) => {
+  if (!FIREFLY_URL || !FIREFLY_TOKEN) {
     return res.status(400).json({ 
-      error: 'Firefly URL and Token are required in environment variables or form.' 
+      connected: false, 
+      message: 'Missing FIREFLY_URL or FIREFLY_TOKEN environment variables.' 
     });
   }
 
-  const args = [
-    'npx', 'firefly-iii-sankey',
-    '-u', `"${url}"`,
-    '-t', `"${token}"`,
-    '-f', format || 'sankeymatic'
-  ];
+  try {
+    const response = await fetch(`${FIREFLY_URL}/api/v1/about`, {
+      headers: {
+        'Authorization': `Bearer ${FIREFLY_TOKEN}`,
+        'Accept': 'application/json'
+      }
+    });
 
-  if (startDate) args.push('-s', `"${startDate}"`);
-  if (endDate) args.push('-e', `"${endDate}"`);
-  if (withAssets) args.push('--with-assets');
+    if (response.ok) {
+      const data = await response.json();
+      return res.json({ 
+        connected: true, 
+        version: data.data?.version || 'Connected' 
+      });
+    } else {
+      return res.status(response.status).json({ 
+        connected: false, 
+        message: `HTTP ${response.status}: Failed to authenticate with Firefly III.` 
+      });
+    }
+  } catch (err) {
+    return res.status(500).json({ 
+      connected: false, 
+      message: `Could not reach server: ${err.message}` 
+    });
+  }
+});
 
-  const command = args.join(' ');
+// 2. Generate Sankey data endpoint
+app.post('/api/generate', (req, res) => {
+  const { startDate, endDate, withAssets, withAccounts } = req.body;
 
-  exec(command, (error, stdout, stderr) => {
+  let cmd = `npx firefly-iii-sankey -u "${FIREFLY_URL}" -t "${FIREFLY_TOKEN}" -f sankeymatic`;
+
+  if (startDate) cmd += ` --start ${startDate}`;
+  if (endDate) cmd += ` --end ${endDate}`;
+  if (withAssets) cmd += ` --with-assets`;
+  if (withAccounts) cmd += ` --with-accounts`;
+
+  exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
     if (error) {
-      console.error(`Execution error: ${error}`);
       return res.status(500).json({ error: stderr || error.message });
     }
     res.json({ result: stdout });
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
