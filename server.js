@@ -61,7 +61,25 @@ app.post('/api/generate', (req, res) => {
     if (error) {
       return res.status(500).json({ error: stderr || error.message });
     }
-    res.json({ result: stdout });
+
+    // Process and trim the output string
+    let cleanOutput = stdout;
+
+    // Remove CLI leading metadata up to the first data line/comment
+    cleanOutput = cleanOutput.replace(/^[\s\S]*?(?=\n\n|\r\n\r\n|^[A-Za-z0-9"'/])/, '').trim();
+
+    // Remove any trailing URLs, http(s) links, or footer notes
+    cleanOutput = cleanOutput.split('\n').filter(line => {
+      const trimmed = line.trim();
+      return !trimmed.startsWith('http://') && 
+             !trimmed.startsWith('https://') && 
+             !trimmed.toLowerCase().includes('github.com');
+    }).join('\n').trim();
+
+    // Prepend the requested header line
+    const finalResult = `// Firefly III Sankey Diagram\n${cleanOutput}`;
+
+    res.json({ result: finalResult });
   });
 });
 
