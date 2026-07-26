@@ -28,4 +28,15 @@ services:
       - FIREFLY_TOKEN=your_personal_access_token_here
       - PORT=3000
     restart: unless-stopped
+
+services:
+  firefly-sankey:
+    build: .
+    container_name: firefly-sankey-web
+    ports:
+      - "3000:3000"
+    environment:
+      - FIREFLY_URL=http://<YOUR_UNRAID_IP>:<FIREFLY_PORT>
+      - FIREFLY_TOKEN=your_personal_access_token_here
+    restart: unless-stopped
 ```
