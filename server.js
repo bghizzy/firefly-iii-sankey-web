@@ -12,79 +12,110 @@ const FIREFLY_TOKEN = process.env.FIREFLY_TOKEN || '';
 // Function to consolidate (+) and (-) category pairs in SankeyMatic output strings.
 function consolidateSankeyData(input) {
   const lines = input.split("\n");
-  
-  // Regex to extract source, target, amount, and optional (+) / (-) sign
-  // Matches pattern: "Source [Amount] Target"
   const lineRegex = /^(.*?)\s*\[([\d\.]+)\]\s*(.*)$/;
 
   const parsedLines = [];
-  const entriesByKey = {};
+  const plusEntries = {};  // Keyed by cleaned category name
+  const minusEntries = {}; // Keyed by cleaned category name
+  const budgetEntries = {};// Keyed by primary budget name
 
-  // Step 1: Parse all lines and group (+) and (-) entries by normalized category name
+  // --- Step 1: Parse all lines into dynamic objects ---
   lines.forEach((line, index) => {
-    const match = line.trim().match(lineRegex);
-    
+    const trimmed = line.trim();
+    const match = trimmed.match(lineRegex);
+
     if (!match) {
-      parsedLines.push({ raw: line, isData: false });
+      parsedLines.push({ index, raw: line, isData: false });
       return;
     }
 
     const [_, source, amountStr, target] = match;
     const amount = parseFloat(amountStr);
-
-    // Identify if '+' or '-' exists in source or target
     const isPlus = source.includes("(+)") || target.includes("(+)");
     const isMinus = source.includes("(-)") || target.includes("(-)");
 
-    if (isPlus || isMinus) {
-      // Normalize category name by stripping (+), (-), and extra spaces
-      const cleanSource = source.replace(/\(\+\)|\(-\)/g, "").trim();
-      const cleanTarget = target.replace(/\(\+\)|\(-\)/g, "").trim();
-      const key = isPlus 
-        ? (source.includes("(+)") ? cleanSource : cleanTarget)
-        : (source.includes("(-)") ? cleanSource : cleanTarget);
+    const entry = {
+      index,
+      source,
+      target,
+      amount,
+      isPlus,
+      isMinus,
+      isData: true,
+      remove: false
+    };
 
-      if (!entriesByKey[key]) {
-        entriesByKey[key] = { plus: null, minus: null };
+    parsedLines.push(entry);
+
+    if (isPlus) {
+      const category = source.replace(/\(\+\)/g, "").trim();
+      plusEntries[category] = entry;
+    } else if (isMinus) {
+      const category = target.replace(/\(-\)/g, "").trim();
+      const primaryBudget = source.trim(); // e.g. "Shopping", "Health", "[NO BUDGET]"
+      minusEntries[category] = { ...entry, primaryBudget };
+    } else if (source.trim() === "All Funds") {
+      const primaryBudget = target.trim();
+      budgetEntries[primaryBudget] = entry;
+    }
+  });
+
+  // --- Step 2: Perform Reconciliations ---
+  Object.keys(plusEntries).forEach(category => {
+    const plus = plusEntries[category];
+    const minusInfo = minusEntries[category];
+
+    if (!minusInfo) return; // No matching (-) entry found
+
+    const minus = parsedLines[minusInfo.index];
+    const primaryBudget = minusInfo.primaryBudget;
+    const budgetEntry = budgetEntries[primaryBudget];
+
+    if (minus.amount > plus.amount) {
+      // Case 1: (-) > (+)
+      const diff = minus.amount - plus.amount;
+
+      // 1. Subtract (+) from Category (-)
+      minus.amount = parseFloat(diff.toFixed(2));
+
+      // 2. Subtract (+) from All Funds [Value] Primary
+      if (budgetEntry) {
+        budgetEntry.amount = parseFloat((budgetEntry.amount - plus.amount).toFixed(2));
       }
 
-      const entryObj = { index, source, target, cleanSource, cleanTarget, amount, isPlus, isMinus };
+      // 3. Remove Category (+) [Value] All Funds
+      plus.remove = true;
 
-      if (isPlus) entriesByKey[key].plus = entryObj;
-      if (isMinus) entriesByKey[key].minus = entryObj;
+    } else if (plus.amount > minus.amount) {
+      // Case 2: (+) > (-)
+      const diff = plus.amount - minus.amount;
 
-      parsedLines.push({ ...entryObj, isData: true, remove: false });
+      // 1. Subtract (-) from Category (+)
+      plus.amount = parseFloat(diff.toFixed(2));
+
+      // 2. Subtract (-) from All Funds [Value] Primary
+      if (budgetEntry) {
+        budgetEntry.amount = parseFloat((budgetEntry.amount - minus.amount).toFixed(2));
+      }
+
+      // 3. Remove Primary [Value] Category (-)
+      minus.remove = true;
+
     } else {
-      parsedLines.push({ raw: line, isData: false });
-    }
-  });
-
-  // Step 2: Compare (+) and (-) pairs and adjust amounts/removals
-  Object.values(entriesByKey).forEach(({ plus, minus }) => {
-    if (plus && minus) {
-      if (minus.amount > plus.amount) {
-        // (-) > (+) : Subtract (+) from (-), remove (+)
-        parsedLines[minus.index].amount = parseFloat((minus.amount - plus.amount).toFixed(2));
-        parsedLines[plus.index].remove = true;
-      } else if (plus.amount > minus.amount) {
-        // (+) > (-) : Subtract (-) from (+), remove (-)
-        parsedLines[plus.index].amount = parseFloat((plus.amount - minus.amount).toFixed(2));
-        parsedLines[minus.index].remove = true;
-      } else {
-        // Equal values: remove both
-        parsedLines[plus.index].remove = true;
-        parsedLines[minus.index].remove = true;
+      // Case 3: Equal values
+      if (budgetEntry) {
+        budgetEntry.amount = parseFloat((budgetEntry.amount - plus.amount).toFixed(2));
       }
+      plus.remove = true;
+      minus.remove = true;
     }
   });
 
-  // Step 3: Reconstruct text output
+  // --- Step 3: Format and Reconstruct Output ---
   return parsedLines
     .filter(item => !item.remove)
     .map(item => {
       if (!item.isData) return item.raw;
-      
-      // Re-assemble line with updated amount
       return `${item.source} [${item.amount.toFixed(2)}] ${item.target}`;
     })
     .join("\n");
