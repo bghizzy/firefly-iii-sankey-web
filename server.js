@@ -104,6 +104,7 @@ function consolidateSankeyData(input) {
 
     parsedLines.push(entry);
 
+    // Track (+), (-), and Primary Budget entries
     if (isPlus) {
       const category = source.replace(/\(\+\)/g, "").trim();
       plusEntries[category] = entry;
@@ -117,7 +118,7 @@ function consolidateSankeyData(input) {
     }
   });
 
-  // --- Step 2: Perform Reconciliations ---
+  // --- Step 2: Perform Reconciliations for (+) and (-) ---
   Object.keys(plusEntries).forEach(category => {
     const plus = plusEntries[category];
     const minusInfo = minusEntries[category];
@@ -168,17 +169,31 @@ function consolidateSankeyData(input) {
     }
   });
 
-  // --- Step 3: Remap to "All Funds -> Spending -> Primary" ---
+  // --- Step 3: Remaps & Flow Adjustments ---
   let totalSpending = 0;
 
   parsedLines.forEach(item => {
-    if (item.isData && !item.remove && item.source.trim() === "All Funds") {
+    if (!item.isData || item.remove) return;
+
+    // 1. Remap "Inc - Match [Val] All Funds" -> "Inc - Match [Val] Savings"
+    //    and subtract that match amount from "All Funds [Val] Savings"
+    if (item.source.trim() === "Inc - Match" && item.target.trim() === "All Funds") {
+      item.target = "Savings";
+
+      if (budgetEntries["Savings"]) {
+        budgetEntries["Savings"].amount = parseFloat(
+          (budgetEntries["Savings"].amount - item.amount).toFixed(2)
+        );
+      }
+    }
+
+    // 2. Remap "All Funds [Val] Primary" to "Spending [Val] Primary" (Except Savings & Taxes)
+    if (item.source.trim() === "All Funds") {
       const primary = item.target.trim();
 
-      // Remap everything EXCEPT "Savings" and "Taxes"
       if (primary !== "Savings" && primary !== "Taxes") {
         totalSpending += item.amount;
-        item.source = "Spending"; // All Funds [Val] Primary  -->  Spending [Val] Primary
+        item.source = "Spending";
       }
     }
   });
