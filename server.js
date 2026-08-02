@@ -217,7 +217,7 @@ app.get('/api/health', async (req, res) => {
 
 // 2. Generate Sankey data endpoint
 app.post('/api/generate', (req, res) => {
-  const { startDate, endDate, withAssets, withAccounts } = req.body;
+  const { startDate, endDate, withAssets, withAccounts, excludePaycheck } = req.body;
 
   let cmd = `npx firefly-iii-sankey -u "${FIREFLY_URL}" -t "${FIREFLY_TOKEN}" -f sankeymatic`;
 
@@ -225,6 +225,7 @@ app.post('/api/generate', (req, res) => {
   if (endDate) cmd += ` --end ${endDate}`;
   if (withAssets) cmd += ` --with-assets`;
   if (withAccounts) cmd += ` --with-accounts`;
+  if (excludePaycheck) cmd += ` --exclude-accounts "Other - Paycheck"`;
 
   exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
     if (error) {
