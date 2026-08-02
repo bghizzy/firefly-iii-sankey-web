@@ -9,11 +9,13 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 /**
- * Strips CLI connection banners, system information, and execution status logs,
- * leaving only the actual Sankey diagram flow data.
+ * Strips CLI connection banners, system information, and status logs.
+ * Optionally filters out specific account streams (e.g. "Other - Paycheck").
  */
-function cleanSankeyOutput(rawOutput) {
+function cleanSankeyOutput(rawOutput, options = {}) {
   if (!rawOutput) return '';
+
+  const { excludePaycheck = false } = options;
 
   return rawOutput
     .split('\n')
@@ -38,6 +40,11 @@ function cleanSankeyOutput(rawOutput) {
       if (trimmed.startsWith('Fetching transactions')) return false;
       if (trimmed.startsWith('✓')) return false;
 
+      // Toggle Filter: Remove lines containing "Other - Paycheck"
+      if (excludePaycheck && line.includes('Other - Paycheck')) {
+        return false;
+      }
+
       return true;
     })
     .join('\n')
@@ -55,6 +62,7 @@ app.post('/api/generate', (req, res) => {
   const apiToken = process.env.FIREFLY_III_ACCESS_TOKEN || req.body.apiToken;
   const startDate = req.body.startDate;
   const endDate = req.body.endDate;
+  const excludePaycheck = req.body.excludePaycheck || false;
 
   if (!fireflyUrl || !apiToken || !startDate || !endDate) {
     return res.status(400).json({
@@ -71,8 +79,8 @@ app.post('/api/generate', (req, res) => {
       return res.status(500).json({ error: 'Failed to generate Sankey data', details: stderr || error.message });
     }
 
-    // Process stdout to remove header & metadata
-    const cleanOutput = cleanSankeyOutput(stdout);
+    // Process stdout to remove headers, metadata, and excluded accounts
+    const cleanOutput = cleanSankeyOutput(stdout, { excludePaycheck });
 
     return res.json({ result: cleanOutput });
   });
