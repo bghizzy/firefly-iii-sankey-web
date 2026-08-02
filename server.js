@@ -62,22 +62,32 @@ app.post('/api/generate', (req, res) => {
       return res.status(500).json({ error: stderr || error.message });
     }
 
-    // Process and trim the output string
-    let cleanOutput = stdout;
+    // Split output into individual lines
+    const lines = stdout.split('\n');
 
-    // Remove CLI leading metadata up to the first data line/comment
-    cleanOutput = cleanOutput.replace(/^[\s\S]*?(?=\n\n|\r\n\r\n|^[A-Za-z0-9"'/])/, '').trim();
-
-    // Remove any trailing URLs, http(s) links, or footer notes
-    cleanOutput = cleanOutput.split('\n').filter(line => {
+    // Comment out non-flow metadata lines
+    const processedLines = lines.map(line => {
       const trimmed = line.trim();
-      return !trimmed.startsWith('http://') && 
-             !trimmed.startsWith('https://') && 
-             !trimmed.toLowerCase().includes('github.com');
-    }).join('\n').trim();
 
-    // Prepend the requested header line
-    const finalResult = `// Firefly III Sankey Diagram\n${cleanOutput}`;
+      // Keep empty lines clean
+      if (!trimmed) return '';
+
+      // Check if the line is a valid SankeyMatic connection line: "Source [amount] Target"
+      const isSankeyFlow = /^.+?\s+\[\d+(?:\.\d+)?\]\s+.+?$/.test(trimmed);
+
+      // If it's already a comment, return as-is
+      if (trimmed.startsWith('//')) return trimmed;
+
+      // Comment out metadata, status logs, links, or ASCII dividers
+      if (!isSankeyFlow) {
+        return `// ${line}`;
+      }
+
+      return line;
+    });
+
+    // Build final output with the top comment header
+    const finalResult = [`// Firefly III Sankey Diagram`, ...processedLines].join('\n');
 
     res.json({ result: finalResult });
   });
