@@ -68,7 +68,7 @@ meta mentionsankeymatic Y
 
 // Function to consolidate (+) and (-) category pairs in SankeyMatic output strings.
 function consolidateSankeyData(input) {
-const lines = input.split("\n");
+  const lines = input.split("\n");
   const lineRegex = /^(.*?)\s*\[([\d\.]+)\]\s*(.*)$/;
 
   const parsedLines = [];
@@ -187,9 +187,16 @@ const lines = input.split("\n");
 
   // --- Step 4: Group & Sort Sections ---
 
-  // 1. Income Section (Sources -> All Funds / Savings)
+  // Helper function to identify top-level asset sources
+  const isTopLevelSource = (item) => {
+    return item.target === "All Funds" || 
+           item.source.startsWith("Inc -") || 
+           item.source.startsWith("Save -");
+  };
+
+  // 1. Income / Asset Sources
   const incomeEntries = parsedLines.filter(
-    item => item.isData && !item.remove && (item.target === "All Funds" || item.source.startsWith("Inc -"))
+    item => item.isData && !item.remove && isTopLevelSource(item)
   );
   
   // Sort Income: "Inc - Match" strictly FIRST, remaining sorted largest to smallest
@@ -204,7 +211,7 @@ const lines = input.split("\n");
     item => item.isData && !item.remove && item.source === "All Funds"
   );
   
-  const firstCategoryOrder = ["Savings", "Taxes", "Spending"];
+  const firstCategoryOrder = ["Savings", "Spending", "Taxes"];
   
   if (totalSpending > 0) {
     firstCategoryEntries.push({
@@ -219,9 +226,13 @@ const lines = input.split("\n");
     return firstCategoryOrder.indexOf(a.target) - firstCategoryOrder.indexOf(b.target);
   });
 
-  // 3. Sub-Categories: (1st Category -> 2nd Category) and (2nd Category -> 3rd Category)
+  // 3. Sub-Categories: (1st -> 2nd) and (2nd -> 3rd)
   const subCategoryEntries = parsedLines.filter(
-    item => item.isData && !item.remove && item.source !== "All Funds" && !item.source.startsWith("Inc -") && item.source !== "[NO CATEGORY] (+)"
+    item => item.isData && 
+            !item.remove && 
+            item.source !== "All Funds" && 
+            !isTopLevelSource(item) && 
+            item.source !== "[NO CATEGORY] (+)"
   );
 
   // Group by Source Node
@@ -238,17 +249,17 @@ const lines = input.split("\n");
     subCategoryGroups[sourceKey].sort((a, b) => b.amount - a.amount);
   });
 
-  // Build ordered list of 1st Category -> 2nd Category according to Savings -> Spending -> Taxes order
+  // Build ordered list of 1st Category -> 2nd Category (Savings -> Spending -> Taxes)
   const orderedSubCategories = [];
 
   firstCategoryOrder.forEach(cat => {
     if (subCategoryGroups[cat]) {
       orderedSubCategories.push(...subCategoryGroups[cat]);
-      delete subCategoryGroups[cat]; // Remove so it isn't processed twice
+      delete subCategoryGroups[cat];
     }
   });
 
-  // Append remaining 2nd Category -> 3rd Category groups (e.g. Shopping -> Shop - Target) sorted by group total
+  // Append remaining 2nd Category -> 3rd Category groups sorted by group total
   const remainingKeys = Object.keys(subCategoryGroups).sort((a, b) => {
     const sumA = subCategoryGroups[a].reduce((acc, curr) => acc + curr.amount, 0);
     const sumB = subCategoryGroups[b].reduce((acc, curr) => acc + curr.amount, 0);
