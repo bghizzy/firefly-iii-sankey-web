@@ -211,7 +211,7 @@ function consolidateSankeyData(input) {
     item => item.isData && !item.remove && item.source === "All Funds"
   );
   
-  const firstCategoryOrder = ["Savings", "Spending", "Taxes"];
+  const firstCategoryOrder = ["Savings", "Taxes", "Spending"];
   
   if (totalSpending > 0) {
     firstCategoryEntries.push({
