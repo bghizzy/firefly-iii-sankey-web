@@ -9,6 +9,63 @@ app.use(express.static(path.join(__dirname, 'public')));
 const FIREFLY_URL = (process.env.FIREFLY_URL || '').replace(/\/$/, '');
 const FIREFLY_TOKEN = process.env.FIREFLY_TOKEN || '';
 
+// SankeyMatic canvas and styling configuration appended to outputs
+const SANKEY_SETTINGS = `
+// === Settings ===
+
+size w 1600
+  h 1800
+margin l 12
+  r 12
+  t 18
+  b 20
+bg color #ffffff
+  transparent N
+node w 12
+  h 50
+  spacing 75
+  border 0
+  theme a
+  color #888888
+  opacity 1
+flow curvature 0.3
+  inheritfrom outside-in
+  color #999999
+  opacity 0.45
+layout order automatic
+  justifyorigins N
+  justifyends N
+  reversegraph N
+  attachincompletesto nearest
+labels color #000000
+  hide N
+  highlight 0.75
+  fontface sans-serif
+  linespacing 0.2
+  relativesize 100
+  magnify 100
+labelname appears Y
+  size 16
+  weight 400
+labelvalue appears Y
+  fullprecision Y
+  position before
+  weight 400
+labelposition autoalign 0
+  scheme per_stage
+  first before
+  breakpoint 4
+value format ',.'
+  prefix ''
+  suffix ''
+themeoffset a 6
+  b 0
+  c 0
+  d 0
+meta mentionsankeymatic Y
+  listimbalances Y
+`;
+
 // Function to consolidate (+) and (-) category pairs in SankeyMatic output strings.
 function consolidateSankeyData(input) {
   const lines = input.split("\n");
@@ -202,8 +259,11 @@ app.post('/api/generate', (req, res) => {
     const commentSafeResult = [`// Firefly III Sankey Diagram`, ...processedLines].join('\n');
 	
 	// Consolidate catagories
-	const finalResult = consolidateSankeyData(commentSafeResult);
-	
+	const consolidatedResult = consolidateSankeyData(commentSafeResult);
+
+	// Append SankeyMatic layout and theme settings
+    const finalResult = `${consolidatedResult.trim()}\n\n${SANKEY_SETTINGS.trim()}\n`;
+	  
     res.json({ result: finalResult });
   });
 }); 
