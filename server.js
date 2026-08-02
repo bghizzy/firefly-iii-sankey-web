@@ -104,13 +104,12 @@ function consolidateSankeyData(input) {
 
     parsedLines.push(entry);
 
-    // Track (+), (-), and Primary Budget entries
     if (isPlus) {
       const category = source.replace(/\(\+\)/g, "").trim();
       plusEntries[category] = entry;
     } else if (isMinus) {
       const category = target.replace(/\(-\)/g, "").trim();
-      const primaryBudget = source.trim(); // e.g. "Shopping", "Health", "[NO BUDGET]"
+      const primaryBudget = source.trim();
       minusEntries[category] = { ...entry, primaryBudget };
     } else if (source.trim() === "All Funds") {
       const primaryBudget = target.trim();
@@ -123,44 +122,31 @@ function consolidateSankeyData(input) {
     const plus = plusEntries[category];
     const minusInfo = minusEntries[category];
 
-    if (!minusInfo) return; // No matching (-) entry found
+    if (!minusInfo) return;
 
     const minus = parsedLines[minusInfo.index];
     const primaryBudget = minusInfo.primaryBudget;
     const budgetEntry = budgetEntries[primaryBudget];
 
     if (minus.amount > plus.amount) {
-      // Case 1: (-) > (+)
       const diff = minus.amount - plus.amount;
-
-      // 1. Subtract (+) from Category (-)
       minus.amount = parseFloat(diff.toFixed(2));
 
-      // 2. Subtract (+) from All Funds [Value] Primary
       if (budgetEntry) {
         budgetEntry.amount = parseFloat((budgetEntry.amount - plus.amount).toFixed(2));
       }
-
-      // 3. Remove Category (+) [Value] All Funds
       plus.remove = true;
 
     } else if (plus.amount > minus.amount) {
-      // Case 2: (+) > (-)
       const diff = plus.amount - minus.amount;
-
-      // 1. Subtract (-) from Category (+)
       plus.amount = parseFloat(diff.toFixed(2));
 
-      // 2. Subtract (-) from All Funds [Value] Primary
       if (budgetEntry) {
         budgetEntry.amount = parseFloat((budgetEntry.amount - minus.amount).toFixed(2));
       }
-
-      // 3. Remove Primary [Value] Category (-)
       minus.remove = true;
 
     } else {
-      // Case 3: Equal values
       if (budgetEntry) {
         budgetEntry.amount = parseFloat((budgetEntry.amount - plus.amount).toFixed(2));
       }
@@ -169,14 +155,13 @@ function consolidateSankeyData(input) {
     }
   });
 
-  // --- Step 3: Remaps & Flow Adjustments ---
+  // --- Step 3: Remaps & Spending Total ---
   let totalSpending = 0;
 
   parsedLines.forEach(item => {
     if (!item.isData || item.remove) return;
 
-    // 1. Remap "Inc - Match [Val] All Funds" -> "Inc - Match [Val] Savings"
-    //    and subtract that match amount from "All Funds [Val] Savings"
+    // Remap "Inc - Match [Val] All Funds" -> "Inc - Match [Val] Savings"
     if (item.source.trim() === "Inc - Match" && item.target.trim() === "All Funds") {
       item.target = "Savings";
 
@@ -187,7 +172,7 @@ function consolidateSankeyData(input) {
       }
     }
 
-    // 2. Remap "All Funds [Val] Primary" to "Spending [Val] Primary" (Except Savings & Taxes)
+    // Remap "All Funds [Val] Primary" to "Spending [Val] Primary" (Except Savings & Taxes)
     if (item.source.trim() === "All Funds") {
       const primary = item.target.trim();
 
@@ -200,21 +185,85 @@ function consolidateSankeyData(input) {
 
   totalSpending = parseFloat(totalSpending.toFixed(2));
 
-  // --- Step 4: Reconstruct Text Output ---
+  // --- Step 4: Group & Sort Sections ---
+
+  // 1. Income Section (Source -> All Funds / Savings)
+  const incomeEntries = parsedLines.filter(
+    item => item.isData && !item.remove && (item.target === "All Funds" || item.source.startsWith("Inc -"))
+  );
+  // Sort Income entries from LARGEST to SMALLEST
+  incomeEntries.sort((a, b) => b.amount - a.amount);
+
+  // 2. Middle Layer: All Funds -> 1st Category (Savings, Spending, Taxes)
+  const firstCategoryEntries = parsedLines.filter(
+    item => item.isData && !item.remove && item.source === "All Funds"
+  );
+  
+  // Explicit order requested: Savings, Spending, Taxes
+  const firstCategoryOrder = ["Savings", "Spending", "Taxes"];
+  
+  // Inject the calculated "All Funds [Val] Spending" entry into the list if present
+  if (totalSpending > 0) {
+    firstCategoryEntries.push({
+      source: "All Funds",
+      target: "Spending",
+      amount: totalSpending,
+      isData: true
+    });
+  }
+
+  firstCategoryEntries.sort((a, b) => {
+    return firstCategoryOrder.indexOf(a.target) - firstCategoryOrder.indexOf(b.target);
+  });
+
+  // 3. Sub-Categories: (Spending -> Primary Budgets) and (Primary Budgets -> Expense Categories)
+  const subCategoryEntries = parsedLines.filter(
+    item => item.isData && !item.remove && item.source !== "All Funds" && !item.source.startsWith("Inc -") && item.source !== "[NO CATEGORY] (+)"
+  );
+
+  // Group sub-categories by their Source node so siblings are kept together, then sort each group LARGEST to SMALLEST
+  const subCategoryGroups = {};
+  subCategoryEntries.forEach(item => {
+    if (!subCategoryGroups[item.source]) {
+      subCategoryGroups[item.source] = [];
+    }
+    subCategoryGroups[item.source].push(item);
+  });
+
+  Object.keys(subCategoryGroups).forEach(sourceKey => {
+    subCategoryGroups[sourceKey].sort((a, b) => b.amount - a.amount);
+  });
+
+  // Sort the groups themselves by their total group sum (largest primary budget group first)
+  const sortedSourceKeys = Object.keys(subCategoryGroups).sort((a, b) => {
+    const sumA = subCategoryGroups[a].reduce((acc, curr) => acc + curr.amount, 0);
+    const sumB = subCategoryGroups[b].reduce((acc, curr) => acc + curr.amount, 0);
+    return sumB - sumA;
+  });
+
+  // Flatten the sorted sub-category groups in order
+  const sortedSubCategories = sortedSourceKeys.flatMap(key => subCategoryGroups[key]);
+
+  // --- Step 5: Format Final Output ---
   const outputLines = [];
 
-  parsedLines.forEach(item => {
-    if (item.remove) return;
+  // Section 1: Income / Sources -> Assets
+  incomeEntries.forEach(item => {
+    outputLines.push(`${item.source} [${item.amount.toFixed(2)}] ${item.target}`);
+  });
 
-    if (!item.isData) {
-      // Inject the "All Funds [Value] Spending" connection right before "Assets -> Budgets" section
-      if (item.raw.includes("// Assets -> Budgets") && totalSpending > 0) {
-        outputLines.push(`All Funds [${totalSpending.toFixed(2)}] Spending`);
-      }
-      outputLines.push(item.raw);
-    } else {
-      outputLines.push(`${item.source} [${item.amount.toFixed(2)}] ${item.target}`);
-    }
+  outputLines.push("\n// Assets -> Budgets");
+
+  // Section 2: Assets -> 1st Categories (Savings, Spending, Taxes)
+  firstCategoryEntries.forEach(item => {
+    outputLines.push(`${item.source} [${item.amount.toFixed(2)}] ${item.target}`);
+  });
+
+  outputLines.push("\n// Budgets -> Expense Categories");
+
+  // Section 3: 2nd -> 3rd Categories (Largest to Smallest)
+  sortedSubCategories.forEach(item => {
+    outputLines.push(`${item.source} [${item.amount.toFixed(2)}] ${item.target}`);
   });
 
   return outputLines.join("\n");
