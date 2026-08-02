@@ -29,12 +29,12 @@ node w 12
   color #888888
   opacity 1
 flow curvature 0.3
-  inheritfrom outside-in
+  inheritfrom source
   color #999999
   opacity 0.45
 layout order automatic
-  justifyorigins N
-  justifyends N
+  justifyorigins Y
+  justifyends Y
   reversegraph N
   attachincompletesto nearest
 labels color #000000
@@ -52,9 +52,9 @@ labelvalue appears Y
   position before
   weight 400
 labelposition autoalign 0
-  scheme per_stage
+  scheme auto
   first before
-  breakpoint 4
+  breakpoint 6
 value format ',.'
   prefix ''
   suffix ''
