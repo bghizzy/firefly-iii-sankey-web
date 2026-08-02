@@ -15,7 +15,7 @@
     .form-group { margin-bottom: 1rem; }
     label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; }
     input[type="date"] { padding: 0.5rem; background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px; }
-    .checkbox-group { display: flex; gap: 1rem; margin: 1rem 0; }
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
     button { background: #2196f3; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 4px; cursor: pointer; font-size: 1rem; }
     button:hover { background: #1976d2; }
     textarea { width: 100%; height: 350px; background: #0a0a0a; color: #00ff66; font-family: monospace; padding: 1rem; border: 1px solid #333; border-radius: 4px; box-sizing: border-box; }
@@ -45,6 +45,7 @@
       <div class="checkbox-group">
         <label><input type="checkbox" id="withAssets"> Include Asset Accounts</label>
         <label><input type="checkbox" id="withAccounts"> Detailed Revenue/Expense Accounts</label>
+        <label><input type="checkbox" id="excludePaycheck"> Exclude 'Other - Paycheck'</label>
       </div>
       <button onclick="generateSankey()">Generate Sankey Data</button>
     </div>
@@ -93,7 +94,8 @@
         startDate: document.getElementById('startDate').value,
         endDate: document.getElementById('endDate').value,
         withAssets: document.getElementById('withAssets').checked,
-        withAccounts: document.getElementById('withAccounts').checked
+        withAccounts: document.getElementById('withAccounts').checked,
+        excludePaycheck: document.getElementById('excludePaycheck').checked
       };
 
       try {
