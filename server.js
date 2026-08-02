@@ -3,81 +3,85 @@ const { exec } = require('child_process');
 const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-/**
- * Strips CLI connection banners, system information, and execution status logs,
- * leaving only the actual Sankey diagram flow data.
- */
-function cleanSankeyOutput(rawOutput) {
-  if (!rawOutput) return '';
+const FIREFLY_URL = (process.env.FIREFLY_URL || '').replace(/\/$/, '');
+const FIREFLY_TOKEN = process.env.FIREFLY_TOKEN || '';
 
-  return rawOutput
-    .split('\n')
-    .filter((line) => {
-      const trimmed = line.trim();
-
-      // Drop blank lines, borders, system/auth headers, and status log lines
-      if (!trimmed) return false;
-      if (trimmed.startsWith('// Firefly III Sankey Diagram')) return false;
-      if (trimmed.includes('━━━━━━')) return false;
-      if (trimmed.startsWith('Connected to Firefly III')) return false;
-      if (trimmed.startsWith('System Information:')) return false;
-      if (trimmed.startsWith('Authenticated User:')) return false;
-      if (trimmed.startsWith('Firefly III Version:')) return false;
-      if (trimmed.startsWith('API Version:')) return false;
-      if (trimmed.startsWith('OS:')) return false;
-      if (trimmed.startsWith('PHP Version:')) return false;
-      if (trimmed.startsWith('User ID:')) return false;
-      if (trimmed.startsWith('Email:')) return false;
-      if (trimmed.startsWith('Role:')) return false;
-      if (trimmed.startsWith('Account Status:')) return false;
-      if (trimmed.startsWith('Fetching transactions')) return false;
-      if (trimmed.startsWith('✓')) return false;
-
-      return true;
-    })
-    .join('\n')
-    .trim();
-}
-
-// Health Check Endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Sankey Diagram Generation Endpoint
-app.post('/api/generate', (req, res) => {
-  const fireflyUrl = process.env.FIREFLY_III_URL || req.body.fireflyUrl;
-  const apiToken = process.env.FIREFLY_III_ACCESS_TOKEN || req.body.apiToken;
-  const startDate = req.body.startDate;
-  const endDate = req.body.endDate;
-
-  if (!fireflyUrl || !apiToken || !startDate || !endDate) {
-    return res.status(400).json({
-      error: 'Missing required parameters (URL, API Token, Start Date, or End Date).'
+// 1. Connection check endpoint
+app.get('/api/health', async (req, res) => {
+  if (!FIREFLY_URL || !FIREFLY_TOKEN) {
+    return res.status(400).json({ 
+      connected: false, 
+      message: 'Missing FIREFLY_URL or FIREFLY_TOKEN environment variables.' 
     });
   }
 
-  // Construct CLI command execution
-  const command = `firefly-iii-sankey --url "${fireflyUrl}" --token "${apiToken}" --start "${startDate}" --end "${endDate}"`;
+  try {
+    const response = await fetch(`${FIREFLY_URL}/api/v1/about`, {
+      headers: {
+        'Authorization': `Bearer ${FIREFLY_TOKEN}`,
+        'Accept': 'application/json'
+      }
+    });
 
-  exec(command, (error, stdout, stderr) => {
+    if (response.ok) {
+      const data = await response.json();
+      return res.json({ 
+        connected: true, 
+        version: data.data?.version || 'Connected' 
+      });
+    } else {
+      return res.status(response.status).json({ 
+        connected: false, 
+        message: `HTTP ${response.status}: Failed to authenticate with Firefly III.` 
+      });
+    }
+  } catch (err) {
+    return res.status(500).json({ 
+      connected: false, 
+      message: `Could not reach server: ${err.message}` 
+    });
+  }
+});
+
+// 2. Generate Sankey data endpoint
+app.post('/api/generate', (req, res) => {
+  const { startDate, endDate, withAssets, withAccounts } = req.body;
+
+  let cmd = `npx firefly-iii-sankey -u "${FIREFLY_URL}" -t "${FIREFLY_TOKEN}" -f sankeymatic`;
+
+  if (startDate) cmd += ` --start ${startDate}`;
+  if (endDate) cmd += ` --end ${endDate}`;
+  if (withAssets) cmd += ` --with-assets`;
+  if (withAccounts) cmd += ` --with-accounts`;
+
+  exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
     if (error) {
-      console.error(`Execution error: ${error.message}`);
-      return res.status(500).json({ error: 'Failed to generate Sankey data', details: stderr || error.message });
+      return res.status(500).json({ error: stderr || error.message });
     }
 
-    // Process stdout to remove header & metadata
-    const cleanOutput = cleanSankeyOutput(stdout);
+    // Process and trim the output string
+    let cleanOutput = stdout;
 
-    return res.json({ result: cleanOutput });
+    // Remove CLI leading metadata up to the first data line/comment
+    cleanOutput = cleanOutput.replace(/^[\s\S]*?(?=\n\n|\r\n\r\n|^[A-Za-z0-9"'/])/, '').trim();
+
+    // Remove any trailing URLs, http(s) links, or footer notes
+    cleanOutput = cleanOutput.split('\n').filter(line => {
+      const trimmed = line.trim();
+      return !trimmed.startsWith('http://') && 
+             !trimmed.startsWith('https://') && 
+             !trimmed.toLowerCase().includes('github.com');
+    }).join('\n').trim();
+
+    // Prepend the requested header line
+    const finalResult = `// Firefly III Sankey Diagram\n${cleanOutput}`;
+
+    res.json({ result: finalResult });
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Firefly III Sankey Web App listening on port ${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
