@@ -72,9 +72,9 @@ function consolidateSankeyData(input) {
   const lineRegex = /^(.*?)\s*\[([\d\.]+)\]\s*(.*)$/;
 
   const parsedLines = [];
-  const plusEntries = {};  // Keyed by cleaned category name
-  const minusEntries = {}; // Keyed by cleaned category name
-  const budgetEntries = {};// Keyed by primary budget name
+  const plusEntries = {};   // Keyed by cleaned category name
+  const minusEntries = {};  // Keyed by cleaned category name
+  const budgetEntries = {}; // Keyed by primary budget name
 
   // --- Step 1: Parse all lines into dynamic objects ---
   lines.forEach((line, index) => {
@@ -168,14 +168,41 @@ function consolidateSankeyData(input) {
     }
   });
 
-  // --- Step 3: Format and Reconstruct Output ---
-  return parsedLines
-    .filter(item => !item.remove)
-    .map(item => {
-      if (!item.isData) return item.raw;
-      return `${item.source} [${item.amount.toFixed(2)}] ${item.target}`;
-    })
-    .join("\n");
+  // --- Step 3: Remap to "All Funds -> Spending -> Primary" ---
+  let totalSpending = 0;
+
+  parsedLines.forEach(item => {
+    if (item.isData && !item.remove && item.source.trim() === "All Funds") {
+      const primary = item.target.trim();
+
+      // Remap everything EXCEPT "Savings" and "Taxes"
+      if (primary !== "Savings" && primary !== "Taxes") {
+        totalSpending += item.amount;
+        item.source = "Spending"; // All Funds [Val] Primary  -->  Spending [Val] Primary
+      }
+    }
+  });
+
+  totalSpending = parseFloat(totalSpending.toFixed(2));
+
+  // --- Step 4: Reconstruct Text Output ---
+  const outputLines = [];
+
+  parsedLines.forEach(item => {
+    if (item.remove) return;
+
+    if (!item.isData) {
+      // Inject the "All Funds [Value] Spending" connection right before "Assets -> Budgets" section
+      if (item.raw.includes("// Assets -> Budgets") && totalSpending > 0) {
+        outputLines.push(`All Funds [${totalSpending.toFixed(2)}] Spending`);
+      }
+      outputLines.push(item.raw);
+    } else {
+      outputLines.push(`${item.source} [${item.amount.toFixed(2)}] ${item.target}`);
+    }
+  });
+
+  return outputLines.join("\n");
 }
 
 // 1. Connection check endpoint
