@@ -32,7 +32,7 @@ flow curvature 0.3
   inheritfrom source
   color #999999
   opacity 0.45
-layout order automatic
+layout order exact
   justifyorigins Y
   justifyends Y
   reversegraph N
@@ -204,7 +204,7 @@ const lines = input.split("\n");
     item => item.isData && !item.remove && item.source === "All Funds"
   );
   
-  const firstCategoryOrder = ["Savings", "Spending", "Taxes"];
+  const firstCategoryOrder = ["Savings", "Taxes", "Spending"];
   
   if (totalSpending > 0) {
     firstCategoryEntries.push({
